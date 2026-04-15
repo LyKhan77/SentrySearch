@@ -3,10 +3,10 @@
 ## Current Status
 - Date: 2026-04-15
 - Branch: `main`
-- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3 + Stats API Task 1 + Library API Task 1 + History API Task 1
-- Scope in progress: Phase 7: History API
+- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3 + Stats API Task 1 + Library API Task 1 + History API Task 1 + Search API Task 1
+- Scope in progress: Phase 8: Search API
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests -v`
-- Result: `14 passed`
+- Result: `15 passed`
 
 ## Implemented
 ### Phase 1: FastAPI Backend Bootstrap
@@ -71,7 +71,7 @@
 - Added `GET /api/library`
 - Library currently returns mock data (id, name, duration, size, status)
 - Added test `backend/tests/test_library.py`
-- Commit: `53f1934` `feat: add mock library API endpoint`
+- Commit: `917dd61` `feat: add mock library API endpoint`
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_library.py -v` → `1 passed`
 
 ### Phase 7: History API
@@ -79,8 +79,16 @@
 - Added `GET /api/history`
 - History currently returns mock data (id, query, time, results)
 - Added test `backend/tests/test_history.py`
-- Commit: `[pending]` `feat: add mock history API endpoint`
+- Commit: `ee305ff` `feat: add mock history API endpoint`
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_history.py -v` → `1 passed`
+
+### Phase 8: Search API
+- Added `backend/api/search.py`
+- Added `GET /api/search`
+- Search currently returns mock data (id, title, thumbnailUrl, score, duration, timestamp)
+- Added test `backend/tests/test_search.py`
+- Commit: `[pending]` `feat: add mock search API endpoint`
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_search.py -v` → `1 passed`
 
 ## Current Backend Surface
 - `GET /api/health`
@@ -92,9 +100,10 @@
 - `GET /api/stats`
 - `GET /api/library`
 - `GET /api/history`
+- `GET /api/search`
 
 ## Known Gaps
-- Search, clips, original videos not implemented yet
+- Clips, original videos not implemented yet
 - Settings are still in-memory and not persisted to `.env` or another config store
 - Indexing start endpoint still uses mock in-memory progress rather than real indexing work
 - Current tests do not explicitly validate CORS headers
@@ -105,7 +114,7 @@
 - Working tree was clean before this report file was added
 
 ## Next Recommended Backend Steps
-1. Implement **Search API** (`GET /api/search`) for retrieval.
+1. Implement **Clips/Video API** for streaming/retrieval.
 2. Replace mock background progress with real SentrySearch indexing logic.
 3. Add stronger API tests for CORS and UUID format.
 
