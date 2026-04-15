@@ -3,11 +3,11 @@
 ## Current Status
 - Date: 2026-04-15
 - Branch: `main`
-- Scope completed: backend integration plan `docs/superpowers/plans/2026-04-15-backend-integration-plan.md` Tasks 1-3
-- Scope in progress: indexing lifecycle phase
-- Phase 4 started: tracking mock indexing jobs
-- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py::test_start_indexing_returns_uuid_and_tracks_job -v`
-- Result: `1 passed, 1 warning`
+- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3
+- Scope in progress: Phase 4 completion
+- Phase 4 ongoing: Mock indexing jobs with background thread + task reconciliation + SSE + cancellation
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py -v`
+- Result: `7 passed`
 
 ## Implemented
 ### Phase 1: FastAPI Backend Bootstrap
@@ -41,24 +41,35 @@
 ### Phase 4: Indexing Lifecycle
 - Strengthened `POST /api/index/start` to return a real UUID `job_id`
 - Added in-memory `jobs` and `job_tasks` tracking in `backend/api/indexing.py`
-- Mock indexing now starts in a background task while preserving the initial queued job state
-- Mock indexing jobs now continue outside the request lifecycle and reconcile finished task state
-- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py::test_start_indexing_returns_uuid_and_tracks_job -v`
+- Mock indexing runs on a dedicated background daemon thread so it continues after request finishes
+- Task reconciliation: cancelled/failed tasks update job state; stale handles are cleaned up
+- **Task 2: SSE Progress Streaming**
+  - Added SSE endpoint `GET /api/index/progress/{job_id}` via `sse-starlette`
+  - Yields job state (progress, status, eta, done, cancelled) as JSON in SSE events
+  - Added helper for standard 404 JSON error response for missing jobs
+  - Added tests for SSE stream and 404 behavior
+- **Task 3: Cancel Endpoint**
+  - Added `POST /api/index/cancel/{job_id}` endpoint
+  - Marks job as cancelled in state and cancels the background task if still running
+  - Added tests for cancellation and unknown job 404
+- Commits:
+  - `9253582` `feat: track mock indexing jobs`
+  - `3943453` `fix: run indexing outside request loop`
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py -v` → `7 passed`
 
 ## Current Backend Surface
 - `GET /api/health`
 - `GET /api/settings`
 - `PUT /api/settings`
 - `POST /api/index/start`
+- `GET /api/index/progress/{job_id}` (SSE)
+- `POST /api/index/cancel/{job_id}`
 
 ## Known Gaps
-- SSE progress endpoint `GET /api/index/progress/{job_id}` not implemented yet
-- Index cancel endpoint `POST /api/index/cancel/{job_id}` not implemented yet
 - Stats, search, clips, original videos, library, and history endpoints not implemented yet
 - Settings are still in-memory and not persisted to `.env` or another config store
 - Indexing start endpoint still uses mock in-memory progress rather than real indexing work
 - Current tests do not explicitly validate CORS headers
-- Current indexing tests do not yet cover SSE progress or cancellation behavior
 
 ## Recent Merge Status
 - Feature branch was merged back into `main`
@@ -66,12 +77,11 @@
 - Working tree was clean before this report file was added
 
 ## Next Recommended Backend Steps
-1. Implement SSE progress stream and cancellation endpoints for indexing jobs.
-2. Replace mock background progress with real SentrySearch indexing logic.
-3. Add stats endpoint for dashboard data.
-4. Implement search API and retrieval endpoints.
-5. Implement library and history APIs.
-6. Add stronger API tests for CORS and UUID format.
+1. Replace mock background progress with real SentrySearch indexing logic.
+2. Add stats endpoint for dashboard data.
+3. Implement search API and retrieval endpoints.
+4. Implement library and history APIs.
+5. Add stronger API tests for CORS and UUID format.
 
 ## Update Rule
 - After each completed implementation step or phase, append/update this file with:
