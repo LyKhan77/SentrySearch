@@ -149,6 +149,24 @@ async def get_indexing_progress(job_id: str):
     return EventSourceResponse(progress_events(job_id))
 
 
+@router.post("/index/cancel/{job_id}")
+async def cancel_indexing(job_id: str):
+    if job_id not in jobs:
+        return index_job_not_found(job_id)
+
+    job = jobs[job_id]
+    job["cancelled"] = True
+    job["status"] = "cancelled"
+    job["eta"] = "stopped"
+    job["done"] = True
+
+    task = job_tasks.pop(job_id, None)
+    if task:
+        task.cancel()
+
+    return {"status": "cancelled", "job_id": job_id}
+
+
 @router.post("/index/start")
 async def start_indexing(req: IndexRequest) -> dict[str, str]:
     job_id = str(uuid.uuid4())

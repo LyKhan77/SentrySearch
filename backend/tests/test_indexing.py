@@ -120,3 +120,29 @@ def test_progress_stream_returns_404_for_unknown_job():
         "details": f"Job {unknown_id} does not exist in the current session",
         "code": 404
     }
+
+
+def test_cancel_indexing_marks_job_cancelled():
+    response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
+    job_id = response.json()["job_id"]
+
+    cancel_response = client.post(f"/api/index/cancel/{job_id}")
+    assert cancel_response.status_code == 200
+    assert cancel_response.json() == {"status": "cancelled", "job_id": job_id}
+
+    job = indexing_api.jobs[job_id]
+    assert job["cancelled"] is True
+    assert job["status"] == "cancelled"
+    assert job_id not in indexing_api.job_tasks
+
+
+def test_cancel_indexing_returns_404_for_unknown_job():
+    unknown_id = str(uuid.uuid4())
+    response = client.post(f"/api/index/cancel/{unknown_id}")
+    
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": "Index job not found",
+        "details": f"Job {unknown_id} does not exist in the current session",
+        "code": 404
+    }
