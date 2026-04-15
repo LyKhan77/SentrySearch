@@ -87,7 +87,7 @@
 - Added `GET /api/search`
 - Search currently returns mock data (id, title, thumbnailUrl, score, duration, timestamp)
 - Added test `backend/tests/test_search.py`
-- Commit: `[pending]` `feat: add mock search API endpoint`
+- Commit: `c01a934` `feat: add mock search API endpoint`
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_search.py -v` → `1 passed`
 
 ## Current Backend Surface
