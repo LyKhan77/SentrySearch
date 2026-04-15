@@ -67,7 +67,7 @@
 
 ## Next Recommended Backend Steps
 1. Implement SSE progress stream and cancellation endpoints for indexing jobs.
-2. Replace mock indexing start behavior with background task orchestration.
+2. Replace mock background progress with real SentrySearch indexing logic.
 3. Add stats endpoint for dashboard data.
 4. Implement search API and retrieval endpoints.
 5. Implement library and history APIs.
