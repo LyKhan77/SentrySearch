@@ -1,10 +1,13 @@
 import asyncio
 import uuid
+import json
 from concurrent.futures import Future
 import threading
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from sse_starlette.sse import EventSourceResponse
 
 
 router = APIRouter()
@@ -100,6 +103,50 @@ async def run_mock_indexing(job_id: str) -> None:
     job = jobs.get(job_id)
     if job is not None and not job["cancelled"]:
         job["done"] = True
+
+
+def index_job_not_found(job_id: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Index job not found",
+            "details": f"Job {job_id} does not exist in the current session",
+            "code": 404,
+        },
+    )
+
+
+async def progress_events(job_id: str):
+    while True:
+        job = jobs.get(job_id)
+        if job is None:
+            # This should be handled by the caller, but just in case
+            break
+
+        yield {
+            "data": json.dumps(
+                {
+                    "progress": job["progress"],
+                    "status": job["status"],
+                    "eta": job["eta"],
+                    "done": job["done"],
+                    "cancelled": job["cancelled"],
+                }
+            )
+        }
+
+        if job["done"] or job["cancelled"]:
+            break
+
+        await asyncio.sleep(0.1)
+
+
+@router.get("/index/progress/{job_id}")
+async def get_indexing_progress(job_id: str):
+    if job_id not in jobs:
+        return index_job_not_found(job_id)
+
+    return EventSourceResponse(progress_events(job_id))
 
 
 @router.post("/index/start")

@@ -88,3 +88,35 @@ def test_failed_indexing_task_marks_job_failed(monkeypatch):
     assert job["eta"] == "error"
     assert job["done"] is True
     assert job_id not in indexing_api.job_tasks
+
+
+def test_progress_stream_returns_sse_event():
+    response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
+    job_id = response.json()["job_id"]
+
+    with client.stream("GET", f"/api/index/progress/{job_id}") as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        
+        # We just need the first event to verify it works
+        for line in response.iter_lines():
+            if line.startswith("data: "):
+                import json
+                data = json.loads(line[len("data: "):])
+                assert "progress" in data
+                assert "status" in data
+                assert "eta" in data
+                assert "done" in data
+                break
+
+
+def test_progress_stream_returns_404_for_unknown_job():
+    unknown_id = str(uuid.uuid4())
+    response = client.get(f"/api/index/progress/{unknown_id}")
+    
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": "Index job not found",
+        "details": f"Job {unknown_id} does not exist in the current session",
+        "code": 404
+    }
