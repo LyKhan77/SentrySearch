@@ -3,11 +3,11 @@
 ## Current Status
 - Date: 2026-04-15
 - Branch: `main`
-- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3
-- Scope in progress: Phase 4 completion
-- Phase 4 ongoing: Mock indexing jobs with background thread + task reconciliation + SSE + cancellation
-- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py -v`
-- Result: `7 passed`
+- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3 + Stats API Task 1
+- Scope in progress: Phase 5 completion
+- Phase 5 ongoing: Stats API (Mock)
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_stats.py -v`
+- Result: `1 passed`
 
 ## Implemented
 ### Phase 1: FastAPI Backend Bootstrap
@@ -57,6 +57,14 @@
   - `3943453` `fix: run indexing outside request loop`
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py -v` → `7 passed`
 
+### Phase 5: Stats API
+- Added `backend/api/stats.py`
+- Added `GET /api/stats`
+- Stats currently return mock data (videos, chunks, db size, duration)
+- Added test `backend/tests/test_stats.py`
+- Commit: `feat: add mock stats API endpoint`
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_stats.py -v` → `1 passed`
+
 ## Current Backend Surface
 - `GET /api/health`
 - `GET /api/settings`
@@ -64,9 +72,10 @@
 - `POST /api/index/start`
 - `GET /api/index/progress/{job_id}` (SSE)
 - `POST /api/index/cancel/{job_id}`
+- `GET /api/stats`
 
 ## Known Gaps
-- Stats, search, clips, original videos, library, and history endpoints not implemented yet
+- Search, clips, original videos, library, and history endpoints not implemented yet
 - Settings are still in-memory and not persisted to `.env` or another config store
 - Indexing start endpoint still uses mock in-memory progress rather than real indexing work
 - Current tests do not explicitly validate CORS headers
@@ -78,10 +87,9 @@
 
 ## Next Recommended Backend Steps
 1. Replace mock background progress with real SentrySearch indexing logic.
-2. Add stats endpoint for dashboard data.
-3. Implement search API and retrieval endpoints.
-4. Implement library and history APIs.
-5. Add stronger API tests for CORS and UUID format.
+2. Implement search API and retrieval endpoints.
+3. Implement library and history APIs.
+4. Add stronger API tests for CORS and UUID format.
 
 ## Update Rule
 - After each completed implementation step or phase, append/update this file with:
