@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import settings
+from backend.api import indexing, settings
 
 
 app = FastAPI()
@@ -15,6 +15,7 @@ app.add_middleware(
 )
 
 app.include_router(settings.router, prefix="/api")
+app.include_router(indexing.router, prefix="/api")
 
 
 @app.get("/api/health")
