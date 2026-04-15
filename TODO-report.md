@@ -42,6 +42,7 @@
 - Strengthened `POST /api/index/start` to return a real UUID `job_id`
 - Added in-memory `jobs` and `job_tasks` tracking in `backend/api/indexing.py`
 - Mock indexing now starts in a background task while preserving the initial queued job state
+- Mock indexing jobs now continue outside the request lifecycle and reconcile finished task state
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_indexing.py::test_start_indexing_returns_uuid_and_tracks_job -v`
 
 ## Current Backend Surface
