@@ -23,7 +23,10 @@ def test_update_settings():
     payload = {"model": "qwen3-vl", "chunk_duration": 20, "overlap": 5}
     response = client.put("/api/settings", json=payload)
     assert response.status_code == 200
-    assert response.json()["chunk_duration"] == 20
+
+    persisted_response = client.get("/api/settings")
+    assert persisted_response.status_code == 200
+    assert persisted_response.json() == payload
 
 
 def test_get_settings_starts_with_defaults():
