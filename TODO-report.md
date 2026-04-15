@@ -3,10 +3,10 @@
 ## Current Status
 - Date: 2026-04-15
 - Branch: `main`
-- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3 + Stats API Task 1 + Library API Task 1 + History API Task 1 + Search API Task 1
-- Scope in progress: Phase 8: Search API
+- Scope completed: backend integration plan Tasks 1-3 + Indexing Lifecycle Tasks 1-3 + Stats API Task 1 + Library API Task 1 + History API Task 1 + Search API Task 1 + Video API Task 1
+- Scope in progress: Phase 9: Video API
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests -v`
-- Result: `15 passed`
+- Result: `17 passed`
 
 ## Implemented
 ### Phase 1: FastAPI Backend Bootstrap
@@ -90,6 +90,14 @@
 - Commit: `c01a934` `feat: add mock search API endpoint`
 - Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_search.py -v` → `1 passed`
 
+### Phase 9: Video API
+- Added `backend/api/video.py`
+- Added `GET /api/video/stream/{video_id}`
+- Video streaming currently returns mock data from `backend/assets`
+- Added test `backend/tests/test_video.py`
+- Commit: `dd5e293` `feat: add mock video streaming API endpoint`
+- Verification: `PYTHONDONTWRITEBYTECODE=1 /tmp/sentrysearch-backend-task1-venv/bin/pytest backend/tests/test_video.py -v` → `2 passed`
+
 ## Current Backend Surface
 - `GET /api/health`
 - `GET /api/settings`
@@ -101,6 +109,7 @@
 - `GET /api/library`
 - `GET /api/history`
 - `GET /api/search`
+- `GET /api/video/stream/{video_id}`
 
 ## Known Gaps
 - Clips, original videos not implemented yet
@@ -114,9 +123,8 @@
 - Working tree was clean before this report file was added
 
 ## Next Recommended Backend Steps
-1. Implement **Clips/Video API** for streaming/retrieval.
-2. Replace mock background progress with real SentrySearch indexing logic.
-3. Add stronger API tests for CORS and UUID format.
+1. Replace mock background progress with real SentrySearch indexing logic.
+2. Add stronger API tests for CORS and UUID format.
 
 ## Update Rule
 - After each completed implementation step or phase, append/update this file with:
