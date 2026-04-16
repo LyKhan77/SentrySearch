@@ -16,7 +16,9 @@ export default function DashboardPage() {
     status: 'Initializing...',
     eta: 'calculating...',
     done: false,
-    cancelled: false
+    cancelled: false,
+    fallback_occurred: false,
+    fallback_reason: null as string | null
   });
 
   useEffect(() => {
@@ -31,7 +33,9 @@ export default function DashboardPage() {
         status: data.status,
         eta: data.eta,
         done: data.done,
-        cancelled: data.cancelled
+        cancelled: data.cancelled,
+        fallback_occurred: data.fallback_occurred || false,
+        fallback_reason: data.fallback_reason || null
       });
 
       if (data.done || data.cancelled) {
@@ -57,6 +61,16 @@ export default function DashboardPage() {
     try {
       const response = await endpoints.startIndexing(folderPath);
       setJobId(response.job_id);
+      // Reset indexing state for new job
+      setIndexingState({
+        progress: 0,
+        status: 'Initializing...',
+        eta: 'calculating...',
+        done: false,
+        cancelled: false,
+        fallback_occurred: false,
+        fallback_reason: null
+      });
     } catch (err) {
       console.error('Failed to start indexing:', err);
       alert('Failed to start indexing. Check console for details.');
@@ -100,6 +114,8 @@ export default function DashboardPage() {
               eta={indexingState.eta}
               done={indexingState.done}
               cancelled={indexingState.cancelled}
+              fallback_occurred={indexingState.fallback_occurred}
+              fallback_reason={indexingState.fallback_reason}
               onCancel={handleCancelIndexing}
             />
           ) : (
