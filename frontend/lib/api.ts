@@ -21,6 +21,7 @@ export const endpoints = {
   stats: () => fetchApi('/stats'),
   settings: () => fetchApi('/settings'),
   updateSettings: (settings: any) => fetchApi('/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+  testLocalModel: () => fetchApi('/settings/test-local', { method: 'POST' }),
   library: () => fetchApi('/library'),
   search: (query: string, threshold: number = 0) => fetchApi(`/search?q=${encodeURIComponent(query)}&threshold=${threshold}`),
   history: () => fetchApi('/history'),

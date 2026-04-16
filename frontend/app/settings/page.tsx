@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "@/lib/api";
-import { Loader2, CheckCircle2, AlertCircle, Info } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Info, TestTube } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { LocalModelStatus, BackendStatusBadge } from "@/components/settings";
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -19,8 +20,11 @@ export default function SettingsPage() {
     model: 'gemini',
     chunk_duration: 5,
     overlap: 2,
-    gemini_api_key: ''
+    gemini_api_key: '',
+    local_model_size: 'qwen2b'
   });
+  const [localModelStatus, setLocalModelStatus] = useState<'unknown' | 'available' | 'unavailable' | 'error' | 'loading'>('unknown');
+  const [localModelError, setLocalModelError] = useState<string | null>(null);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -33,8 +37,15 @@ export default function SettingsPage() {
         model: settings.model || 'gemini',
         chunk_duration: settings.chunk_duration || 5,
         overlap: settings.overlap || 2,
-        gemini_api_key: settings.gemini_api_key || ''
+        gemini_api_key: settings.gemini_api_key || '',
+        local_model_size: settings.local_model_size || 'qwen2b'
       });
+      
+      // Set initial fallback status if available
+      if (settings.is_using_fallback) {
+        setLocalModelStatus('unknown');
+        setLocalModelError(settings.fallback_reason);
+      }
     }
   }, [settings]);
 
@@ -49,9 +60,39 @@ export default function SettingsPage() {
     }
   });
 
+  const testLocalModelMutation = useMutation({
+    mutationFn: endpoints.testLocalModel,
+    onMutate: () => {
+      setLocalModelStatus('loading');
+      setLocalModelError(null);
+    },
+    onSuccess: (data) => {
+      if (data.status === 'available') {
+        setLocalModelStatus('available');
+        toast.success(`Local model (${data.model_used}) is available`);
+      } else {
+        setLocalModelStatus('unavailable');
+        setLocalModelError(data.reason);
+        toast.error(`Local model unavailable: ${data.reason}`);
+      }
+    },
+    onError: (error: Error) => {
+      setLocalModelStatus('error');
+      setLocalModelError(error.message);
+      toast.error(`Error testing local model: ${error.message}`);
+    }
+  });
+
   const handleSave = () => {
     updateMutation.mutate(formData);
   };
+
+  const handleTestLocalModel = () => {
+    testLocalModelMutation.mutate();
+  };
+
+  // Warning if 8B model selected on likely 16GB system
+  const show8BWarning = formData.model === 'local' && formData.local_model_size === 'qwen8b';
 
   if (isLoading) {
     return (
@@ -88,9 +129,14 @@ export default function SettingsPage() {
               <Label className="text-base">Use Local Model (Qwen3-VL)</Label>
               <p className="text-sm text-muted-foreground">Keep all processing and data on this device.</p>
               {settings?.active_backend && (
-                <p className="text-xs text-primary font-medium">
-                  Currently active: {settings.active_backend === 'local' ? `Local ${settings.active_model || 'Qwen3-VL'}` : 'Gemini'}
-                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground">Currently active:</span>
+                  <BackendStatusBadge 
+                    backend={settings.active_backend || 'gemini'}
+                    isFallback={settings.is_using_fallback}
+                    fallbackReason={settings.fallback_reason}
+                  />
+                </div>
               )}
             </div>
             <Switch 
@@ -98,6 +144,62 @@ export default function SettingsPage() {
               onCheckedChange={(checked) => setFormData({...formData, model: checked ? 'local' : 'gemini'})}
             />
           </div>
+
+          {formData.model === 'local' && (
+            <>
+              <Separator />
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="local-model-size">Local Model Size</Label>
+                  <LocalModelStatus 
+                    status={localModelStatus} 
+                    reason={localModelError} 
+                  />
+                </div>
+                <select
+                  id="local-model-size"
+                  value={formData.local_model_size}
+                  onChange={(e) => setFormData({...formData, local_model_size: e.target.value})}
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                >
+                  <option value="qwen2b">2B (Recommended for 16GB RAM)</option>
+                  <option value="qwen8b">8B (Requires 24GB+ RAM)</option>
+                </select>
+                
+                {show8BWarning && (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <p>Warning: 8B model requires 24GB+ RAM. On 16GB systems, this may cause out-of-memory errors and automatic fallback to Gemini.</p>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestLocalModel}
+                    disabled={testLocalModelMutation.isPending}
+                  >
+                    {testLocalModelMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Testing...
+                      </>
+                    ) : (
+                      <>
+                        <TestTube className="w-4 h-4 mr-2" />
+                        Test Local Model
+                      </>
+                    )}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Verify the model can load before indexing
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 
@@ -111,7 +213,11 @@ export default function SettingsPage() {
               onChange={(e) => setFormData({...formData, gemini_api_key: e.target.value})}
               disabled={formData.model === 'local'} 
             />
-            <p className="text-xs text-muted-foreground">Required only if local model is disabled.</p>
+            <p className="text-xs text-muted-foreground">
+              {formData.model === 'local' 
+                ? "Gemini API key is optional when using local model (used as fallback if local model fails)." 
+                : "Required when not using local model."}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -174,7 +280,8 @@ export default function SettingsPage() {
           model: settings?.model || 'gemini',
           chunk_duration: settings?.chunk_duration || 5,
           overlap: settings?.overlap || 2,
-          gemini_api_key: settings?.gemini_api_key || ''
+          gemini_api_key: settings?.gemini_api_key || '',
+          local_model_size: settings?.local_model_size || 'qwen2b'
         })}>Discard Changes</Button>
         <Button onClick={handleSave} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? "Saving..." : "Save Changes"}
