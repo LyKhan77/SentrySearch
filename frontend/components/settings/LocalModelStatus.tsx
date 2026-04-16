@@ -62,7 +62,9 @@ export function LocalModelStatus({
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>{badge}</TooltipTrigger>
+          <TooltipTrigger>
+            <span>{badge}</span>
+          </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <p className="text-sm">{reason}</p>
           </TooltipContent>
