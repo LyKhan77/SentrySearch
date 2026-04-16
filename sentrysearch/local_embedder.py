@@ -6,6 +6,8 @@ Source: https://github.com/QwenLM/Qwen3-VL-Embedding
 """
 
 import os
+import platform
+import subprocess
 import sys
 import time
 
@@ -36,6 +38,87 @@ def normalize_model_key(model: str) -> str:
     return model.replace("/", "_").replace("-", "_").lower()
 
 
+def get_mac_hardware_info() -> dict:
+    """Get hardware information for macOS systems.
+
+    Returns:
+        Dict with keys:
+        - is_mac: bool
+        - is_apple_silicon: bool
+        - total_memory_gb: float
+        - chip_name: str | None
+    """
+    result = {
+        "is_mac": False,
+        "is_apple_silicon": False,
+        "total_memory_gb": 0.0,
+        "chip_name": None,
+    }
+
+    if platform.system() != "Darwin":
+        return result
+
+    result["is_mac"] = True
+
+    # Get memory info
+    try:
+        mem_result = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        mem_bytes = int(mem_result.stdout.strip())
+        result["total_memory_gb"] = mem_bytes / (1024**3)
+    except Exception:
+        pass
+
+    # Get chip info
+    try:
+        chip_result = subprocess.run(
+            ["sysctl", "-n", "machdep.cpu.brand_string"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        chip = chip_result.stdout.strip()
+        result["chip_name"] = chip
+        # Apple Silicon chips have "Apple" in the name
+        result["is_apple_silicon"] = "Apple" in chip
+    except Exception:
+        pass
+
+    return result
+
+
+def validate_model_for_hardware(model_name: str) -> str:
+    """Validate and potentially adjust model based on available hardware.
+
+    Args:
+        model_name: Requested model name (e.g., "qwen8b" or "qwen2b")
+
+    Returns:
+        Validated model name (may be different from input if adjusted)
+    """
+    # Only validate on macOS Apple Silicon
+    hw_info = get_mac_hardware_info()
+    if not hw_info["is_mac"] or not hw_info["is_apple_silicon"]:
+        return model_name
+
+    # Check if requesting 8B model with insufficient memory
+    if model_name in ("qwen8b", "Qwen/Qwen3-VL-Embedding-8B"):
+        mem_gb = hw_info["total_memory_gb"]
+        if mem_gb < 24:
+            print(
+                f"Warning: 8B model requires 24GB+ RAM for optimal performance. "
+                f"Detected {mem_gb:.1f}GB. Using 2B model instead.",
+                file=sys.stderr,
+            )
+            return "qwen2b"
+
+    return model_name
+
+
 def detect_default_model() -> str:
     """Pick the best default local model based on available hardware.
 
@@ -54,11 +137,14 @@ def detect_default_model() -> str:
         # Apple Silicon unified memory — 8B needs ~16 GB in float16
         try:
             import subprocess
+
             result = subprocess.run(
                 ["sysctl", "-n", "hw.memsize"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
-            mem_gb = int(result.stdout.strip()) / (1024 ** 3)
+            mem_gb = int(result.stdout.strip()) / (1024**3)
             return "qwen8b" if mem_gb >= 24 else "qwen2b"
         except Exception:
             return "qwen2b"
@@ -76,7 +162,9 @@ class LocalEmbedder(BaseEmbedder):
         dimensions: int = 768,
         quantize: bool | None = None,
     ):
-        self._model_name = MODEL_ALIASES.get(model_name, model_name)
+        # Validate model against hardware before storing
+        validated_model = validate_model_for_hardware(model_name)
+        self._model_name = MODEL_ALIASES.get(validated_model, validated_model)
         self._dimensions = dimensions
         self._quantize = quantize  # None = auto-detect
         self._model = None
@@ -94,22 +182,29 @@ class LocalEmbedder(BaseEmbedder):
                 Qwen3VLModel,
                 Qwen3VLConfig,
             )
-            from transformers.models.qwen3_vl.processing_qwen3_vl import Qwen3VLProcessor
+            from transformers.models.qwen3_vl.processing_qwen3_vl import (
+                Qwen3VLProcessor,
+            )
             from transformers.cache_utils import Cache
             from transformers.utils import TransformersKwargs
             from transformers.processing_utils import Unpack
         except ImportError as e:
             raise LocalModelError(
                 f"Missing dependencies for local backend: {e}\n\n"
-                "Install with: uv tool install \".[local]\"\n"
-                "For 4-bit quantization: uv tool install \".[local-quantized]\""
+                'Install with: uv tool install ".[local]"\n'
+                'For 4-bit quantization: uv tool install ".[local-quantized]"'
             ) from e
 
         # Check if model is already cached locally
         try:
             from huggingface_hub import try_to_load_from_cache
+
             cached = try_to_load_from_cache(self._model_name, "config.json")
-            is_cached = cached is not None and not isinstance(cached, str) or (isinstance(cached, str) and os.path.exists(cached))
+            is_cached = (
+                cached is not None
+                and not isinstance(cached, str)
+                or (isinstance(cached, str) and os.path.exists(cached))
+            )
         except Exception:
             is_cached = False
 
@@ -143,8 +238,10 @@ class LocalEmbedder(BaseEmbedder):
             # Auto: only quantize when VRAM is tight for the chosen model
             props = torch.cuda.get_device_properties(0)
             # Attribute renamed total_mem → total_memory in recent PyTorch
-            total_mem = getattr(props, "total_memory", None) or getattr(props, "total_mem", 0)
-            vram_gb = total_mem / (1024 ** 3)
+            total_mem = getattr(props, "total_memory", None) or getattr(
+                props, "total_mem", 0
+            )
+            vram_gb = total_mem / (1024**3)
             # 8B needs ~16 GB in bf16, 2B needs ~4 GB — add headroom
             needs_gb = 18 if "8B" in self._model_name else 6
             want_quantize = vram_gb < needs_gb
@@ -152,6 +249,7 @@ class LocalEmbedder(BaseEmbedder):
             try:
                 import bitsandbytes  # noqa: F401
                 from transformers import BitsAndBytesConfig
+
                 quantization_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_compute_dtype=torch.float16,
@@ -161,7 +259,7 @@ class LocalEmbedder(BaseEmbedder):
                 if self._quantize is True:
                     raise LocalModelError(
                         "4-bit quantization requested but bitsandbytes is not installed.\n\n"
-                        "Install with: uv tool install \".[local-quantized]\""
+                        'Install with: uv tool install ".[local-quantized]"'
                     )
         elif want_quantize and device != "cuda":
             if self._quantize is True:
@@ -180,6 +278,7 @@ class LocalEmbedder(BaseEmbedder):
 
         class _Qwen3VLForEmbedding(_PreTrained):
             """Qwen3-VL wrapper that exposes last_hidden_state for pooling."""
+
             config: _Config
 
             def __init__(self, config):
@@ -223,7 +322,8 @@ class LocalEmbedder(BaseEmbedder):
 
         try:
             self._processor = Qwen3VLProcessor.from_pretrained(
-                self._model_name, padding_side="right",
+                self._model_name,
+                padding_side="right",
             )
 
             load_kwargs = dict(trust_remote_code=True)
@@ -241,7 +341,8 @@ class LocalEmbedder(BaseEmbedder):
                 load_kwargs["torch_dtype"] = dtype
 
             self._model = _Qwen3VLForEmbedding.from_pretrained(
-                self._model_name, **load_kwargs,
+                self._model_name,
+                **load_kwargs,
             )
             if quantization_config is None:
                 self._model = self._model.to(device)
@@ -255,6 +356,7 @@ class LocalEmbedder(BaseEmbedder):
     def _pooling_last(hidden_state, attention_mask):
         """Pool at the last non-padded token position."""
         import torch
+
         flipped = attention_mask.flip(dims=[1])
         last_pos = flipped.argmax(dim=1)
         col = attention_mask.shape[1] - last_pos - 1
@@ -266,6 +368,7 @@ class LocalEmbedder(BaseEmbedder):
         """MRL dimension truncation: slice first N dims, then L2-normalize."""
         import torch
         import torch.nn.functional as F
+
         truncated = embedding[:target_dims]
         norm = torch.linalg.norm(truncated)
         if norm > 0:
@@ -287,14 +390,19 @@ class LocalEmbedder(BaseEmbedder):
 
         if verbose:
             size_kb = os.path.getsize(chunk_path) / 1024
-            print(f"    [verbose] embedding {size_kb:.0f}KB chunk locally", file=sys.stderr)
+            print(
+                f"    [verbose] embedding {size_kb:.0f}KB chunk locally",
+                file=sys.stderr,
+            )
 
         t0 = time.monotonic()
 
         conversation = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "Represent the video for retrieval."}],
+                "content": [
+                    {"type": "text", "text": "Represent the video for retrieval."}
+                ],
             },
             {
                 "role": "user",
@@ -310,7 +418,9 @@ class LocalEmbedder(BaseEmbedder):
         ]
 
         text = self._processor.apply_chat_template(
-            conversation, tokenize=False, add_generation_prompt=True,
+            conversation,
+            tokenize=False,
+            add_generation_prompt=True,
         )
 
         images, video_inputs, video_kwargs = process_vision_info(
@@ -340,7 +450,8 @@ class LocalEmbedder(BaseEmbedder):
         with torch.no_grad():
             outputs = self._model(**inputs)
             embeddings = self._pooling_last(
-                outputs.last_hidden_state, inputs["attention_mask"],
+                outputs.last_hidden_state,
+                inputs["attention_mask"],
             )
             embeddings = F.normalize(embeddings, p=2, dim=-1)
 
@@ -349,8 +460,7 @@ class LocalEmbedder(BaseEmbedder):
 
         if verbose:
             print(
-                f"    [verbose] dims={len(result)}, "
-                f"inference_time={elapsed:.2f}s",
+                f"    [verbose] dims={len(result)}, inference_time={elapsed:.2f}s",
                 file=sys.stderr,
             )
 
@@ -367,7 +477,9 @@ class LocalEmbedder(BaseEmbedder):
         conversation = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "Retrieve videos relevant to the query."}],
+                "content": [
+                    {"type": "text", "text": "Retrieve videos relevant to the query."}
+                ],
             },
             {
                 "role": "user",
@@ -376,7 +488,9 @@ class LocalEmbedder(BaseEmbedder):
         ]
 
         prompt = self._processor.apply_chat_template(
-            conversation, tokenize=False, add_generation_prompt=True,
+            conversation,
+            tokenize=False,
+            add_generation_prompt=True,
         )
 
         inputs = self._processor(
@@ -389,7 +503,8 @@ class LocalEmbedder(BaseEmbedder):
         with torch.no_grad():
             outputs = self._model(**inputs)
             embeddings = self._pooling_last(
-                outputs.last_hidden_state, inputs["attention_mask"],
+                outputs.last_hidden_state,
+                inputs["attention_mask"],
             )
             embeddings = F.normalize(embeddings, p=2, dim=-1)
 
