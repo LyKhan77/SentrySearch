@@ -17,14 +17,29 @@ def _resolve_video_path(video_id: str) -> str | None:
     import urllib.parse
 
     video_id = urllib.parse.unquote(video_id)
-    if os.path.isabs(video_id) and os.path.exists(video_id):
-        return video_id
-    file_path = os.path.join(VIDEO_STORAGE_PATH, video_id)
-    if os.path.exists(file_path):
-        return file_path
-    alt_path = os.path.join(VIDEO_STORAGE_PATH, "vids", os.path.basename(video_id))
-    if os.path.exists(alt_path):
-        return alt_path
+
+    # Try multiple locations to find the video
+    possible_paths = [
+        # 1. If it's already an absolute path that exists
+        video_id if os.path.isabs(video_id) and os.path.exists(video_id) else None,
+        # 2. In the backend/assets directory (as stored path)
+        os.path.join(VIDEO_STORAGE_PATH, video_id),
+        # 3. In the project root (common for indexed videos)
+        os.path.join(PROJECT_ROOT, video_id),
+        # 4. Just the basename in assets
+        os.path.join(VIDEO_STORAGE_PATH, os.path.basename(video_id)),
+        # 5. In a 'vids' subdirectory of assets
+        os.path.join(VIDEO_STORAGE_PATH, "vids", os.path.basename(video_id)),
+        # 6. In the current working directory
+        os.path.join(os.getcwd(), video_id),
+        # 7. In the current working directory's vids folder
+        os.path.join(os.getcwd(), "vids", os.path.basename(video_id)),
+    ]
+
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            return path
+
     return None
 
 
@@ -36,7 +51,7 @@ async def stream_video(video_id: str):
             status_code=404,
             content={
                 "error": "Video not found",
-                "details": f"File {video_id} not found",
+                "details": f"File '{video_id}' not found. Searched in: assets/, project root/, and current directory",
             },
         )
     return FileResponse(file_path, media_type="video/mp4")
@@ -55,7 +70,7 @@ async def trim_video(
             status_code=404,
             content={
                 "error": "Video not found",
-                "details": f"File {video_id} not found",
+                "details": f"File '{video_id}' not found",
             },
         )
 
