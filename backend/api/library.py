@@ -1,23 +1,90 @@
-# backend/api/library.py
+import os
+import urllib.parse
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
 
+from sentrysearch.store import SentryStore, detect_index
+from sentrysearch.chunker import _get_video_duration
+
 router = APIRouter()
 
+
 class LibraryItem(BaseModel):
-    id: int
+    id: str
     name: str
     duration: str
     size: str
     status: str
+    path: str
+    videoUrl: str
+
 
 @router.get("/library", response_model=List[LibraryItem])
 async def get_library():
-    # Return mock data for now
-    return [
-        {"id": 1, "name": "2023-10-15_14-30.mp4", "duration": "12:05", "size": "345 MB", "status": "indexed"},
-        {"id": 2, "name": "2023-10-15_15-10.mp4", "duration": "05:22", "size": "120 MB", "status": "indexed"},
-        {"id": 3, "name": "2023-10-16_08-45.mp4", "duration": "24:10", "size": "670 MB", "status": "indexing"},
-        {"id": 4, "name": "2023-10-16_18-05.mp4", "duration": "15:30", "size": "410 MB", "status": "error"},
-    ]
+    backend, model = detect_index()
+    if backend is None:
+        backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+
+    store = SentryStore(backend=backend, model=model)
+    s = store.get_stats()
+
+    # Base storage path for relativizing source_file
+    base_assets_path = os.path.abspath("backend/assets")
+
+    items = []
+    for i, file_path in enumerate(s["source_files"], 1):
+        name = os.path.basename(file_path)
+        size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+
+        # Relativize path for streaming
+        abs_path = os.path.abspath(file_path)
+        if abs_path.startswith(base_assets_path):
+            video_id = os.path.relpath(abs_path, base_assets_path)
+        else:
+            video_id = name
+
+        encoded_video_id = urllib.parse.quote(video_id, safe="")
+        video_url = f"http://localhost:8000/api/video/stream/{encoded_video_id}"
+
+        # Extract video duration
+        try:
+            duration_seconds = _get_video_duration(file_path)
+            minutes, seconds = divmod(int(duration_seconds), 60)
+            hours, minutes = divmod(minutes, 60)
+            if hours > 0:
+                duration_str = f"{hours}h {minutes}m"
+            elif minutes > 0:
+                duration_str = f"{minutes}m {seconds}s"
+            else:
+                duration_str = f"{seconds}s"
+        except Exception:
+            duration_str = "N/A"
+
+        items.append(
+            {
+                "id": str(i),
+                "name": name,
+                "duration": duration_str,
+                "size": size_str,
+                "status": "indexed" if os.path.exists(file_path) else "missing",
+                "path": file_path,
+                "videoUrl": video_url,
+            }
+        )
+
+    return items
+
+
+@router.delete("/library/{item_id}")
+async def delete_library_item(item_id: str, path: str):
+    """Remove a file from the index. Optionally could delete file from disk too."""
+    backend, model = detect_index()
+    if backend is None:
+        return {"status": "error", "message": "No index found"}
+
+    store = SentryStore(backend=backend, model=model)
+    removed_count = store.remove_file(path)
+
+    return {"status": "success", "removed_chunks": removed_count}

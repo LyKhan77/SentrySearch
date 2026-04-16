@@ -3,8 +3,9 @@ import { cn } from "@/lib/utils";
 
 export function SimilarityScoreBadge({ score }: { score: number }) {
   // Score typically between 0 and 1
-  const isHigh = score > 0.8;
-  const isMed = score > 0.5 && score <= 0.8;
+  const safeScore = score ?? 0;
+  const isHigh = safeScore > 0.8;
+  const isMed = safeScore > 0.5 && safeScore <= 0.8;
   
   return (
     <Badge 
@@ -16,7 +17,7 @@ export function SimilarityScoreBadge({ score }: { score: number }) {
         !isHigh && !isMed && "border-muted text-muted-foreground bg-muted/20"
       )}
     >
-      {(score * 100).toFixed(1)}% Match
+      {(safeScore * 100).toFixed(1)}% Match
     </Badge>
   );
 }

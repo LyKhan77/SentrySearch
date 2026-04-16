@@ -1,6 +1,10 @@
+import os
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
+from sentrysearch.search import search_footage
+from sentrysearch.store import SentryStore, detect_index
+from backend.api.db import log_search
 
 router = APIRouter()
 
@@ -11,33 +15,68 @@ class SearchResult(BaseModel):
     score: float
     duration: str
     timestamp: str
+    videoUrl: str
+    startTime: float
+    endTime: float
+    originalPath: str
 
 @router.get("/search", response_model=List[SearchResult])
-async def search(q: str = ""):
-    # Return mock results for now
-    return [
-        {
-            "id": "1",
-            "title": "Red truck cutting off in intersection",
-            "thumbnailUrl": "https://images.unsplash.com/photo-1555519827-0db769b76e82?q=80&w=600&auto=format&fit=crop",
-            "score": 0.89,
-            "duration": "0:15",
-            "timestamp": "2023-10-15 14:32:10"
-        },
-        {
-            "id": "2",
-            "title": "Red truck speeding past on highway",
-            "thumbnailUrl": "https://images.unsplash.com/photo-1553535948-26154fbd9b3b?q=80&w=600&auto=format&fit=crop",
-            "score": 0.76,
-            "duration": "0:12",
-            "timestamp": "2023-10-12 09:15:22"
-        },
-        {
-            "id": "3",
-            "title": "Close call with red SUV",
-            "thumbnailUrl": "https://images.unsplash.com/photo-1583121274602-3e2820c69888?q=80&w=600&auto=format&fit=crop",
-            "score": 0.65,
-            "duration": "0:20",
-            "timestamp": "2023-09-28 17:45:00"
-        },
-    ]
+async def search(q: str = "", threshold: float = 0.0):
+    backend, model = detect_index()
+    if backend is None:
+        backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+    
+    store = SentryStore(backend=backend, model=model)
+    
+    results = search_footage(q, store, n_results=10, threshold=threshold)
+    
+    # Base storage path for relativizing source_file
+    base_assets_path = os.path.abspath("backend/assets")
+    
+    items = []
+    for i, r in enumerate(results, 1):
+        source_file = r.get("source_file", "unknown")
+        # Relativize source_file to get video_id for streaming
+        abs_source = os.path.abspath(source_file)
+        if abs_source.startswith(base_assets_path):
+            video_id = os.path.relpath(abs_source, base_assets_path)
+        else:
+            # Fallback if not in assets (though it should be)
+            video_id = os.path.basename(source_file)
+        
+        # URL encode video_id for the streaming endpoint
+        import urllib.parse
+        encoded_video_id = urllib.parse.quote(video_id, safe='')
+        video_url = f"http://localhost:8000/api/video/stream/{encoded_video_id}"
+        
+        start_time = r.get("start_time", 0.0)
+        end_time = r.get("end_time", 0.0)
+        duration_sec = int(end_time - start_time)
+        
+        items.append({
+            "id": str(i),
+            "title": os.path.basename(source_file),
+            "thumbnailUrl": "/placeholder-clip.jpg", # Keep placeholder for now
+            "score": r.get("similarity_score", r.get("score", 0.0)),
+            "duration": f"{duration_sec}s",
+            "timestamp": r.get("indexed_at", "N/A"),
+            "videoUrl": video_url,
+            "startTime": start_time,
+            "endTime": end_time,
+            "originalPath": source_file
+        })
+    
+    # Log the search if there were results
+    if results:
+        best = results[0]
+        log_search(
+            query=q, 
+            count=len(results), 
+            score=float(best.get("similarity_score", 0.0)),
+            metadata={
+                "top_result_title": os.path.basename(best.get("source_file", "unknown")),
+                "top_result_duration": f"{int(best.get('end_time', 0) - best.get('start_time', 0))}s"
+            }
+        )
+    
+    return items

@@ -1,14 +1,76 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { IndexStatsCard } from "@/components/indexing/IndexStatsCard";
 import { VideoUploader } from "@/components/indexing/VideoUploader";
 import { IndexingProgressBar } from "@/components/indexing/IndexingProgressBar";
 import { SearchBar } from "@/components/search/SearchBar";
 import { useRouter } from "next/navigation";
+import { endpoints } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const isIndexing = true;
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [indexingState, setIndexingState] = useState({
+    progress: 0,
+    status: 'Initializing...',
+    eta: 'calculating...',
+    done: false,
+    cancelled: false
+  });
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    const eventSource = new EventSource(endpoints.progressStream(jobId));
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setIndexingState({
+        progress: data.progress,
+        status: data.status,
+        eta: data.eta,
+        done: data.done,
+        cancelled: data.cancelled
+      });
+
+      if (data.done || data.cancelled) {
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE Error:', error);
+      setIndexingState(prev => ({
+        ...prev,
+        status: 'Connection lost. Check backend.',
+      }));
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [jobId]);
+
+  const handleStartIndexing = async (folderPath: string) => {
+    try {
+      const response = await endpoints.startIndexing(folderPath);
+      setJobId(response.job_id);
+    } catch (err) {
+      console.error('Failed to start indexing:', err);
+      alert('Failed to start indexing. Check console for details.');
+    }
+  };
+
+  const handleCancelIndexing = async () => {
+    if (!jobId) return;
+    try {
+      await endpoints.cancelIndexing(jobId);
+    } catch (err) {
+      console.error('Failed to cancel indexing:', err);
+    }
+  };
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-10">
@@ -31,10 +93,17 @@ export default function DashboardPage() {
 
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Index Status</h3>
-          {isIndexing ? (
-            <IndexingProgressBar progress={68} />
+          {jobId ? (
+            <IndexingProgressBar 
+              progress={indexingState.progress} 
+              status={indexingState.status}
+              eta={indexingState.eta}
+              done={indexingState.done}
+              cancelled={indexingState.cancelled}
+              onCancel={handleCancelIndexing}
+            />
           ) : (
-            <VideoUploader />
+            <VideoUploader onUpload={handleStartIndexing} />
           )}
         </div>
       </div>

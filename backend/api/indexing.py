@@ -1,6 +1,8 @@
 import asyncio
 import uuid
 import json
+import os
+import shutil
 from concurrent.futures import Future
 import threading
 
@@ -8,6 +10,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+
+from sentrysearch.chunker import chunk_video, scan_directory, preprocess_chunk, is_still_frame_chunk
+from sentrysearch.embedder import get_embedder, reset_embedder
+from sentrysearch.store import SentryStore
 
 
 router = APIRouter()
@@ -50,7 +56,7 @@ def get_background_loop() -> asyncio.AbstractEventLoop:
         _background_loop_ready.clear()
         _background_thread = threading.Thread(
             target=_run_background_loop,
-            name="mock-indexing-loop",
+            name="indexing-loop",
             daemon=True,
         )
         _background_thread.start()
@@ -76,33 +82,92 @@ def reconcile_job_task(job_id: str, task: Future[None]) -> None:
 
     error = task.exception()
     if error is not None:
-        job["status"] = "failed"
+        job["status"] = f"failed: {error}"
         job["eta"] = "error"
         job["done"] = True
 
 
-async def run_mock_indexing_task(job_id: str) -> None:
-    await asyncio.sleep(0.01)
-    await run_mock_indexing(job_id)
-
-
-async def run_mock_indexing(job_id: str) -> None:
-    for progress, status, eta in [
-        (25, "Scanning files", "3m left"),
-        (60, "Embedding chunks", "2m left"),
-        (100, "Completed", "done"),
-    ]:
-        job = jobs.get(job_id)
-        if job is None or job["cancelled"]:
-            return
-        await asyncio.sleep(0.05)
-        job["progress"] = progress
-        job["status"] = status
-        job["eta"] = eta
-
+async def run_real_indexing(job_id: str) -> None:
     job = jobs.get(job_id)
-    if job is not None and not job["cancelled"]:
+    if not job:
+        return
+
+    try:
+        directory = job["folder_path"]
+        backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+        model = os.getenv("EMBEDDING_MODEL")
+        chunk_duration = int(os.getenv("CHUNK_DURATION", "30"))
+        overlap = int(os.getenv("OVERLAP", "5"))
+        
+        embedder = get_embedder(backend, model=model)
+        store = SentryStore(backend=backend, model=model)
+        
+        videos = scan_directory(directory) if not os.path.isfile(directory) else [os.path.abspath(directory)]
+        if not videos:
+            job["status"] = f"Error: No supported videos found in {directory}"
+            job["done"] = True
+            return
+
+        total_files = len(videos)
+        for file_idx, video_path in enumerate(videos, 1):
+            if job["cancelled"]:
+                break
+                
+            abs_path = os.path.abspath(video_path)
+            basename = os.path.basename(video_path)
+            
+            job["status"] = f"Processing {basename} ({file_idx}/{total_files})"
+            job["progress"] = int((file_idx - 1) / total_files * 100)
+
+            if store.is_indexed(abs_path):
+                continue
+
+            chunks = chunk_video(abs_path, chunk_duration=chunk_duration, overlap=overlap)
+            num_chunks = len(chunks)
+            embedded = []
+            files_to_cleanup = []
+
+            for chunk_idx, chunk in enumerate(chunks, 1):
+                if job["cancelled"]:
+                    break
+                
+                job["status"] = f"Indexing {basename}: Chunk {chunk_idx}/{num_chunks}"
+                
+                if is_still_frame_chunk(chunk["chunk_path"]):
+                    files_to_cleanup.append(chunk["chunk_path"])
+                    continue
+
+                embed_path = chunk["chunk_path"]
+                # For UI simplicity, we'll always preprocess if it's Gemini
+                if backend == "gemini":
+                    embed_path = preprocess_chunk(embed_path)
+                    if embed_path != chunk["chunk_path"]:
+                        files_to_cleanup.append(embed_path)
+
+                embedding = embedder.embed_video_chunk(embed_path)
+                embedded.append({**chunk, "embedding": embedding})
+                files_to_cleanup.append(chunk["chunk_path"])
+
+            # Cleanup
+            for f in files_to_cleanup:
+                try: os.unlink(f)
+                except: pass
+            if chunks:
+                shutil.rmtree(os.path.dirname(chunks[0]["chunk_path"]), ignore_errors=True)
+
+            if embedded:
+                store.add_chunks(embedded)
+
+        if not job["cancelled"]:
+            job["progress"] = 100
+            job["status"] = "Completed"
+            job["done"] = True
+
+    except Exception as e:
+        job["status"] = f"Error: {str(e)}"
         job["done"] = True
+    finally:
+        reset_embedder()
 
 
 def index_job_not_found(job_id: str) -> JSONResponse:
@@ -179,7 +244,7 @@ async def start_indexing(req: IndexRequest) -> dict[str, str]:
         "cancelled": False,
     }
     task = asyncio.run_coroutine_threadsafe(
-        run_mock_indexing_task(job_id),
+        run_real_indexing(job_id),
         get_background_loop(),
     )
     job_tasks[job_id] = task

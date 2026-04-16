@@ -5,7 +5,11 @@ import { UploadCloud, Folder } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-export function VideoUploader() {
+interface VideoUploaderProps {
+  onUpload: (folderPath: string) => void;
+}
+
+export function VideoUploader({ onUpload }: VideoUploaderProps) {
   const [folderPath, setFolderPath] = useState('');
 
   return (
@@ -25,12 +29,16 @@ export function VideoUploader() {
           value={folderPath}
           onChange={(e) => setFolderPath(e.target.value)}
         />
-        <Button variant="secondary">
+        <Button variant="secondary" onClick={() => alert("Browser folder selection is not supported in web browsers for security reasons. Please paste the absolute path.")}>
           <Folder className="w-4 h-4 mr-2" /> Browse
         </Button>
       </div>
       
-      <Button className="mt-6 w-full max-w-sm" disabled={!folderPath}>
+      <Button 
+        className="mt-6 w-full max-w-sm" 
+        disabled={!folderPath}
+        onClick={() => onUpload(folderPath)}
+      >
         Start Indexing
       </Button>
     </div>

@@ -26,12 +26,15 @@ def reset_index_jobs():
 
 def test_start_indexing_returns_uuid_and_tracks_job(monkeypatch):
     async def fake_run_mock_indexing(job_id: str):
+        import asyncio
+
+        await asyncio.sleep(0.1)  # Delay to allow check for 0 progress
         indexing_api.jobs[job_id]["status"] = "completed"
         indexing_api.jobs[job_id]["progress"] = 100
         indexing_api.jobs[job_id]["eta"] = "done"
         indexing_api.jobs[job_id]["done"] = True
 
-    monkeypatch.setattr(indexing_api, "run_mock_indexing", fake_run_mock_indexing)
+    monkeypatch.setattr(indexing_api, "run_real_indexing", fake_run_mock_indexing)
 
     response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
 
@@ -44,7 +47,22 @@ def test_start_indexing_returns_uuid_and_tracks_job(monkeypatch):
     assert job_id in indexing_api.job_tasks
 
 
-def test_start_indexing_progresses_outside_request_lifecycle():
+def test_start_indexing_progresses_outside_request_lifecycle(monkeypatch):
+    async def fake_run_mock_indexing(job_id: str):
+        # Simulate some progress
+        job = indexing_api.jobs[job_id]
+        job["status"] = "Processing..."
+        job["progress"] = 50
+        await asyncio.sleep(0.05)
+        job["status"] = "Completed"
+        job["progress"] = 100
+        job["eta"] = "done"
+        job["done"] = True
+
+    import asyncio
+
+    monkeypatch.setattr(indexing_api, "run_real_indexing", fake_run_mock_indexing)
+
     response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
 
     assert response.status_code == 200
@@ -69,7 +87,7 @@ def test_failed_indexing_task_marks_job_failed(monkeypatch):
     async def fake_run_mock_indexing(_: str):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(indexing_api, "run_mock_indexing", fake_run_mock_indexing)
+    monkeypatch.setattr(indexing_api, "run_real_indexing", fake_run_mock_indexing)
 
     response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
 
@@ -79,12 +97,12 @@ def test_failed_indexing_task_marks_job_failed(monkeypatch):
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
         job = indexing_api.jobs[job_id]
-        if job["status"] == "failed" and job_id not in indexing_api.job_tasks:
+        if "failed" in job["status"] and job_id not in indexing_api.job_tasks:
             break
         time.sleep(0.02)
 
     job = indexing_api.jobs[job_id]
-    assert job["status"] == "failed"
+    assert "failed" in job["status"]
     assert job["eta"] == "error"
     assert job["done"] is True
     assert job_id not in indexing_api.job_tasks
@@ -97,12 +115,13 @@ def test_progress_stream_returns_sse_event():
     with client.stream("GET", f"/api/index/progress/{job_id}") as response:
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
-        
+
         # We just need the first event to verify it works
         for line in response.iter_lines():
             if line.startswith("data: "):
                 import json
-                data = json.loads(line[len("data: "):])
+
+                data = json.loads(line[len("data: ") :])
                 assert "progress" in data
                 assert "status" in data
                 assert "eta" in data
@@ -113,16 +132,23 @@ def test_progress_stream_returns_sse_event():
 def test_progress_stream_returns_404_for_unknown_job():
     unknown_id = str(uuid.uuid4())
     response = client.get(f"/api/index/progress/{unknown_id}")
-    
+
     assert response.status_code == 404
     assert response.json() == {
         "error": "Index job not found",
         "details": f"Job {unknown_id} does not exist in the current session",
-        "code": 404
+        "code": 404,
     }
 
 
-def test_cancel_indexing_marks_job_cancelled():
+def test_cancel_indexing_marks_job_cancelled(monkeypatch):
+    import asyncio
+
+    async def fake_run_mock_indexing(job_id: str):
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(indexing_api, "run_real_indexing", fake_run_mock_indexing)
+
     response = client.post("/api/index/start", json={"folder_path": "/tmp/vids"})
     job_id = response.json()["job_id"]
 
@@ -139,10 +165,10 @@ def test_cancel_indexing_marks_job_cancelled():
 def test_cancel_indexing_returns_404_for_unknown_job():
     unknown_id = str(uuid.uuid4())
     response = client.post(f"/api/index/cancel/{unknown_id}")
-    
+
     assert response.status_code == 404
     assert response.json() == {
         "error": "Index job not found",
         "details": f"Job {unknown_id} does not exist in the current session",
-        "code": 404
+        "code": 404,
     }

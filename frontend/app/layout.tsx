@@ -13,6 +13,8 @@ export const metadata: Metadata = {
   description: "Semantic search for dashcam footage",
 };
 
+import { Providers } from "@/components/providers";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -21,16 +23,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} flex h-screen overflow-hidden text-foreground bg-background`}>
-        <TooltipProvider>
-          <SidebarNav />
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <TopHeader />
-            <main className="flex-1 overflow-y-auto p-6">
-              {children}
-            </main>
-          </div>
-          <Toaster position="bottom-right" />
-        </TooltipProvider>
+        <Providers>
+          <TooltipProvider>
+            <SidebarNav />
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
+              <TopHeader />
+              <main className="flex-1 overflow-y-auto p-6">
+                {children}
+              </main>
+            </div>
+            <Toaster position="bottom-right" />
+          </TooltipProvider>
+        </Providers>
       </body>
     </html>
   );
