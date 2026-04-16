@@ -18,3 +18,4 @@ db_test/
 .playwright-mcp
 .tmp/
 db/
+backend/assets/vids/

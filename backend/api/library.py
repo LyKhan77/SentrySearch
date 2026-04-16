@@ -46,7 +46,8 @@ async def get_library():
             video_id = name
 
         encoded_video_id = urllib.parse.quote(video_id, safe="")
-        video_url = f"http://localhost:8000/api/video/stream/{encoded_video_id}"
+        # Use relative URL for cross-device compatibility
+        video_url = f"/api/video/stream/{encoded_video_id}"
 
         # Extract video duration
         try:

@@ -77,7 +77,8 @@ async def search(q: str = "", threshold: float = 0.0):
         import urllib.parse
 
         encoded_video_id = urllib.parse.quote(video_id, safe="")
-        video_url = f"http://localhost:8000/api/video/stream/{encoded_video_id}"
+        # Use relative URL for cross-device compatibility
+        video_url = f"/api/video/stream/{encoded_video_id}"
 
         start_time = r.get("start_time", 0.0)
         end_time = r.get("end_time", 0.0)
