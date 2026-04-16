@@ -2,6 +2,7 @@ import os
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv, set_key
+from sentrysearch.store import detect_index
 
 
 router = APIRouter()
@@ -20,11 +21,14 @@ class Settings(BaseModel):
     gemini_api_key: str | None = Field(
         default_factory=lambda: os.getenv("GEMINI_API_KEY")
     )
+    active_backend: str | None = None
+    active_model: str | None = None
 
 
 @router.get("/settings")
 def get_settings() -> Settings:
-    return Settings()
+    backend, model = detect_index()
+    return Settings(active_backend=backend, active_model=model)
 
 
 @router.put("/settings")
