@@ -9,11 +9,11 @@ This document describes the current repository architecture (FastAPI backend + N
        |
        | HTTP
        v
-[ Frontend Next.js :3000 ]
+[ Frontend Next.js :3002 ]
        |
        | REST + SSE
        v
-[ Backend FastAPI :8000 ]
+[ Backend FastAPI :8002 ]
        |
        +---> [ Indexing Engine ]
        |        |--> FFmpeg
@@ -191,7 +191,7 @@ This document describes the current repository architecture (FastAPI backend + N
 
 ## 7) Runtime Notes
 
-- Backend CORS allows `http://localhost:3000`.
-- Frontend default API base is `http://localhost:8000/api` (`NEXT_PUBLIC_API_URL` can override).
+- Backend CORS allows all origins (`*`) for cross-device access.
+- Frontend default API base is `http://0.0.0.0:8002/api` (`NEXT_PUBLIC_API_URL` can override for your Mac's IP).
 - Gemini embedder uses `gemini-embedding-2-preview`.
 - Local embedding requires extra dependencies (`torch`, `transformers`, etc.).

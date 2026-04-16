@@ -87,7 +87,7 @@ OVERLAP=2
 ### Start Backend (FastAPI)
 ```bash
 source .venv/bin/activate
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+uvicorn backend.main:app --host 0.0.0.0 --port 8002
 ```
 
 ### Start Frontend (Next.js)
@@ -96,7 +96,38 @@ cd frontend
 npm install
 npm run dev
 ```
-Access the UI at: `http://localhost:3000`
+Access the UI at: `http://localhost:3002`
+
+---
+
+## 🌐 Cross-Device Access
+
+To access SentrySearch from other devices on your network:
+
+### 1. Find your Mac Mini's IP address:
+```bash
+ipconfig getifaddr en0
+# Example: 192.168.1.100
+```
+
+### 2. Update Frontend Environment:
+Create `frontend/.env.local`:
+```env
+NEXT_PUBLIC_API_URL=http://YOUR_MAC_IP:8002/api
+```
+Example:
+```env
+NEXT_PUBLIC_API_URL=http://192.168.1.100:8002/api
+```
+
+### 3. Access from other devices:
+- **Frontend**: `http://YOUR_MAC_IP:3002`
+- **Backend API**: `http://YOUR_MAC_IP:8002`
+
+### Example:
+If your Mac Mini IP is `192.168.1.100`:
+- Open browser on any device: `http://192.168.1.100:3002`
+- The backend is already configured to accept connections from any origin
 
 ---
 
