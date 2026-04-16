@@ -20,8 +20,7 @@ export interface Clip {
 
 export function ClipCard({ clip, onClick }: { clip: Clip; onClick?: () => void }) {
   const handleSaveClip = () => {
-    const videoId = clip.title;
-    const trimUrl = endpoints.trimClip(videoId, clip.startTime, clip.endTime);
+    const trimUrl = endpoints.trimClip(clip.videoUrl, clip.startTime, clip.endTime);
     const link = document.createElement('a');
     link.href = trimUrl;
     link.download = `clip_${clip.title}_${clip.startTime}s-${clip.endTime}s.mp4`;

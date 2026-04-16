@@ -21,9 +21,10 @@ const getApiBaseUrl = () => {
 export const API_BASE_URL = getApiBaseUrl();
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  console.log('Fetching from:', `${API_BASE_URL}${endpoint}`);
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+  console.log('Fetching from:', url);
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -39,6 +40,26 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   return response.json();
 }
 
+// Helper to extract video ID from full URL or return as-is
+const extractVideoId = (videoUrlOrId: string): string => {
+  if (videoUrlOrId.startsWith('http')) {
+    // Extract the video ID from the full URL
+    // URL format: http://host:8002/api/video/stream/{videoId}
+    const match = videoUrlOrId.match(/\/api\/video\/stream\/(.+)$/);
+    return match ? match[1] : videoUrlOrId;
+  }
+  return videoUrlOrId;
+};
+
+// Helper to get base URL for API calls
+const getApiBaseFromUrl = (fullUrl: string): string => {
+  if (fullUrl.startsWith('http')) {
+    const url = new URL(fullUrl);
+    return `${url.protocol}//${url.host}/api`;
+  }
+  return API_BASE_URL;
+};
+
 export const endpoints = {
   stats: () => fetchApi('/stats'),
   settings: () => fetchApi('/settings'),
@@ -50,7 +71,11 @@ export const endpoints = {
   startIndexing: (folderPath: string) => fetchApi('/index/start', { method: 'POST', body: JSON.stringify({ folder_path: folderPath }) }),
   cancelIndexing: (jobId: string) => fetchApi(`/index/cancel/${jobId}`, { method: 'POST' }),
   progressStream: (jobId: string) => `${API_BASE_URL}/index/progress/${jobId}`,
-  streamVideo: (videoId: string) => `${API_BASE_URL}/video/stream/${videoId}`,
-  trimClip: (videoId: string, start: number, end: number, padding: number = 2.0) =>
-    `${API_BASE_URL}/video/trim/${encodeURIComponent(videoId)}?start=${start}&end=${end}&padding=${padding}`,
+  // Video URLs are now full URLs from backend, use as-is
+  streamVideo: (videoUrl: string) => videoUrl,
+  trimClip: (videoUrl: string, start: number, end: number, padding: number = 2.0) => {
+    const videoId = extractVideoId(videoUrl);
+    const baseUrl = getApiBaseFromUrl(videoUrl);
+    return `${baseUrl}/video/trim/${encodeURIComponent(videoId)}?start=${start}&end=${end}&padding=${padding}`;
+  },
 };
