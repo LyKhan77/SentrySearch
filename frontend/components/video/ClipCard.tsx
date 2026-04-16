@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Download, Info } from "lucide-react";
 import { SimilarityScoreBadge } from "@/components/shared/SimilarityScoreBadge";
 import { ThumbnailImage } from "@/components/shared/ThumbnailImage";
+import { endpoints } from "@/lib/api";
 
 export interface Clip {
   id: string;
@@ -11,11 +12,27 @@ export interface Clip {
   score: number;
   duration: string;
   timestamp: string;
+  videoUrl: string;
+  startTime: number;
+  endTime: number;
+  originalPath: string;
 }
 
-export function ClipCard({ clip }: { clip: Clip }) {
+export function ClipCard({ clip, onClick }: { clip: Clip; onClick?: () => void }) {
+  const handleSaveClip = () => {
+    const videoId = clip.title;
+    const trimUrl = endpoints.trimClip(videoId, clip.startTime, clip.endTime);
+    const link = document.createElement('a');
+    link.href = trimUrl;
+    link.download = `clip_${clip.title}_${clip.startTime}s-${clip.endTime}s.mp4`;
+    link.click();
+  };
+
   return (
-    <Card className="overflow-hidden group flex flex-col border-border/40 hover:border-border/80 transition-colors shadow-sm hover:shadow-md">
+    <Card 
+      onClick={onClick}
+      className="overflow-hidden group flex flex-col border-border/40 hover:border-border/80 transition-all cursor-pointer shadow-sm hover:shadow-md active:scale-[0.98]"
+    >
       <div className="aspect-video relative">
         <ThumbnailImage src={clip.thumbnailUrl} alt={clip.title} />
         <div className="absolute top-2 right-2 z-20">
@@ -33,7 +50,7 @@ export function ClipCard({ clip }: { clip: Clip }) {
         <Button variant="secondary" size="sm" className="w-full text-xs h-8">
           <Info className="w-3 h-3 mr-1.5" /> Details
         </Button>
-        <Button variant="default" size="sm" className="w-full text-xs h-8">
+        <Button variant="default" size="sm" className="w-full text-xs h-8" onClick={(e) => { e.stopPropagation(); handleSaveClip(); }}>
           <Download className="w-3 h-3 mr-1.5" /> Save Clip
         </Button>
       </CardFooter>

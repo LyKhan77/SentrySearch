@@ -1,25 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SearchBar } from "@/components/search/SearchBar";
 import { SearchFilters } from "@/components/search/SearchFilters";
 import { SearchResultsGrid } from "@/components/search/SearchResultsGrid";
 import { DualVideoPlayer } from "@/components/video/DualVideoPlayer";
+import { type Clip } from "@/components/video/ClipCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const mockResults = [
-  { id: '1', title: 'Red truck cutting off in intersection', thumbnailUrl: 'https://images.unsplash.com/photo-1555519827-0db769b76e82?q=80&w=600&auto=format&fit=crop', score: 0.89, duration: '0:15', timestamp: '2023-10-15 14:32:10' },
-  { id: '2', title: 'Red truck speeding past on highway', thumbnailUrl: 'https://images.unsplash.com/photo-1553535948-26154fbd9b3b?q=80&w=600&auto=format&fit=crop', score: 0.76, duration: '0:12', timestamp: '2023-10-12 09:15:22' },
-  { id: '3', title: 'Close call with red SUV', thumbnailUrl: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?q=80&w=600&auto=format&fit=crop', score: 0.65, duration: '0:20', timestamp: '2023-09-28 17:45:00' },
-];
+import { useQuery } from "@tanstack/react-query";
+import { endpoints } from "@/lib/api";
+import { Loader2 } from "lucide-react";
 
 export default function SearchPage() {
   const [activeTab, setActiveTab] = useState('results');
+  const [query, setQuery] = useState('');
+  const [threshold, setThreshold] = useState(0.4);
+  const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
+
+  const { data: results, isLoading, isFetching, error } = useQuery({
+    queryKey: ['search', query, threshold],
+    queryFn: () => endpoints.search(query, threshold),
+    enabled: !!query,
+  });
+
+  const handleSearch = (q: string) => {
+    setQuery(q);
+    setActiveTab('results');
+    setSelectedClip(null);
+  };
+
+  const handleSelectClip = (clip: Clip) => {
+    setSelectedClip(clip);
+    setActiveTab('player');
+  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex flex-col items-center mb-8">
-        <SearchBar onSearch={(q) => console.log('Searching for:', q)} />
+        <SearchBar onSearch={handleSearch} />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -27,28 +45,53 @@ export default function SearchPage() {
           <TabsList>
             <TabsTrigger value="results">Grid Results</TabsTrigger>
             <TabsTrigger value="filters">Filters & Settings</TabsTrigger>
-            <TabsTrigger value="player">Clip Player</TabsTrigger>
+            <TabsTrigger value="player" disabled={!selectedClip}>Clip Player</TabsTrigger>
           </TabsList>
           
-          {activeTab === 'results' && (
-            <div className="text-sm text-muted-foreground">Found 3 matches</div>
+          {results && (
+            <div className="text-sm text-muted-foreground">Found {results.length} matches</div>
           )}
         </div>
 
         <TabsContent value="results" className="mt-0 outline-none">
-          <SearchResultsGrid results={mockResults} />
+          {isLoading || isFetching ? (
+            <div className="flex flex-col items-center justify-center p-20 gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <p className="text-muted-foreground animate-pulse">Searching through vectors...</p>
+            </div>
+          ) : error ? (
+            <div className="p-8 border border-destructive/20 rounded-lg bg-destructive/5 text-destructive text-center">
+              Search failed. Ensure your Gemini API key is configured correctly in Settings.
+            </div>
+          ) : !query ? (
+            <div className="p-20 text-center border-2 border-dashed border-border/40 rounded-xl bg-muted/20">
+              <h3 className="text-xl font-medium text-muted-foreground">Ready to search</h3>
+              <p className="text-muted-foreground/60 mt-1">Enter a query above to find specific events in your footage.</p>
+            </div>
+          ) : (
+            <SearchResultsGrid results={results || []} onSelectClip={handleSelectClip} />
+          )}
         </TabsContent>
 
         <TabsContent value="filters" className="mt-0 outline-none">
-          <SearchFilters />
+          <SearchFilters threshold={threshold} onThresholdChange={setThreshold} />
         </TabsContent>
 
         <TabsContent value="player" className="mt-0 outline-none">
           <div className="bg-card p-6 rounded-xl border border-border/40 shadow-sm">
-            <DualVideoPlayer 
-              originalUrl="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" 
-              clipUrl="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4" 
-            />
+            {selectedClip ? (
+              <DualVideoPlayer 
+                originalUrl={selectedClip.videoUrl} 
+                clipUrl={selectedClip.videoUrl}
+                startTime={selectedClip.startTime}
+                endTime={selectedClip.endTime}
+                videoTitle={selectedClip.title}
+              />
+            ) : (
+              <div className="flex items-center justify-center p-20 text-muted-foreground">
+                Select a clip from the results grid to play.
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
