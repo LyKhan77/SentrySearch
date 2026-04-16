@@ -11,8 +11,14 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from sentrysearch.chunker import chunk_video, scan_directory, preprocess_chunk, is_still_frame_chunk
+from sentrysearch.chunker import (
+    chunk_video,
+    scan_directory,
+    preprocess_chunk,
+    is_still_frame_chunk,
+)
 from sentrysearch.embedder import get_embedder, reset_embedder
+from sentrysearch.fallback_embedder import set_fallback_callback
 from sentrysearch.store import SentryStore
 
 
@@ -98,11 +104,22 @@ async def run_real_indexing(job_id: str) -> None:
         model = os.getenv("EMBEDDING_MODEL")
         chunk_duration = int(os.getenv("CHUNK_DURATION", "30"))
         overlap = int(os.getenv("OVERLAP", "5"))
-        
-        embedder = get_embedder(backend, model=model)
+
+        # Set up fallback callback to notify UI
+        def on_fallback(reason: str):
+            job["fallback_occurred"] = True
+            job["fallback_reason"] = reason
+
+        set_fallback_callback(on_fallback)
+
+        embedder = get_embedder(backend, use_fallback=True, model=model)
         store = SentryStore(backend=backend, model=model)
-        
-        videos = scan_directory(directory) if not os.path.isfile(directory) else [os.path.abspath(directory)]
+
+        videos = (
+            scan_directory(directory)
+            if not os.path.isfile(directory)
+            else [os.path.abspath(directory)]
+        )
         if not videos:
             job["status"] = f"Error: No supported videos found in {directory}"
             job["done"] = True
@@ -112,17 +129,19 @@ async def run_real_indexing(job_id: str) -> None:
         for file_idx, video_path in enumerate(videos, 1):
             if job["cancelled"]:
                 break
-                
+
             abs_path = os.path.abspath(video_path)
             basename = os.path.basename(video_path)
-            
+
             job["status"] = f"Processing {basename} ({file_idx}/{total_files})"
             job["progress"] = int((file_idx - 1) / total_files * 100)
 
             if store.is_indexed(abs_path):
                 continue
 
-            chunks = chunk_video(abs_path, chunk_duration=chunk_duration, overlap=overlap)
+            chunks = chunk_video(
+                abs_path, chunk_duration=chunk_duration, overlap=overlap
+            )
             num_chunks = len(chunks)
             embedded = []
             files_to_cleanup = []
@@ -130,9 +149,9 @@ async def run_real_indexing(job_id: str) -> None:
             for chunk_idx, chunk in enumerate(chunks, 1):
                 if job["cancelled"]:
                     break
-                
+
                 job["status"] = f"Indexing {basename}: Chunk {chunk_idx}/{num_chunks}"
-                
+
                 if is_still_frame_chunk(chunk["chunk_path"]):
                     files_to_cleanup.append(chunk["chunk_path"])
                     continue
@@ -150,10 +169,14 @@ async def run_real_indexing(job_id: str) -> None:
 
             # Cleanup
             for f in files_to_cleanup:
-                try: os.unlink(f)
-                except: pass
+                try:
+                    os.unlink(f)
+                except:
+                    pass
             if chunks:
-                shutil.rmtree(os.path.dirname(chunks[0]["chunk_path"]), ignore_errors=True)
+                shutil.rmtree(
+                    os.path.dirname(chunks[0]["chunk_path"]), ignore_errors=True
+                )
 
             if embedded:
                 store.add_chunks(embedded)
@@ -196,6 +219,8 @@ async def progress_events(job_id: str):
                     "eta": job["eta"],
                     "done": job["done"],
                     "cancelled": job["cancelled"],
+                    "fallback_occurred": job.get("fallback_occurred", False),
+                    "fallback_reason": job.get("fallback_reason"),
                 }
             )
         }
@@ -242,6 +267,8 @@ async def start_indexing(req: IndexRequest) -> dict[str, str]:
         "eta": "pending",
         "done": False,
         "cancelled": False,
+        "fallback_occurred": False,
+        "fallback_reason": None,
     }
     task = asyncio.run_coroutine_threadsafe(
         run_real_indexing(job_id),
