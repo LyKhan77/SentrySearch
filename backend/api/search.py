@@ -1,5 +1,6 @@
 import os
-from fastapi import APIRouter
+import urllib.parse
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import List
 from sentrysearch.search import search_footage
@@ -26,8 +27,17 @@ class SearchResult(BaseModel):
     fallbackReason: str | None = None
 
 
+def get_base_url(request: Request) -> str:
+    """Get the base URL for the API from the request."""
+    # Get the host from the request
+    host = request.headers.get("host", "localhost:8002")
+    # Use HTTP for local network, HTTPS if forwarded
+    scheme = request.headers.get("x-forwarded-proto", "http")
+    return f"{scheme}://{host}"
+
+
 @router.get("/search", response_model=List[SearchResult])
-async def search(q: str = "", threshold: float = 0.0):
+async def search(request: Request, q: str = "", threshold: float = 0.0):
     backend, model = detect_index()
     if backend is None:
         backend = os.getenv("EMBEDDING_BACKEND", "gemini")
@@ -59,6 +69,9 @@ async def search(q: str = "", threshold: float = 0.0):
         fallback_occurred = True
         fallback_reason = fallback_status.get("fallback_reason")
 
+    # Get base URL for constructing full video URLs
+    base_url = get_base_url(request)
+
     # Base storage path for relativizing source_file
     base_assets_path = os.path.abspath("backend/assets")
 
@@ -74,11 +87,9 @@ async def search(q: str = "", threshold: float = 0.0):
             video_id = os.path.basename(source_file)
 
         # URL encode video_id for the streaming endpoint
-        import urllib.parse
-
         encoded_video_id = urllib.parse.quote(video_id, safe="")
-        # Use relative URL for cross-device compatibility
-        video_url = f"/api/video/stream/{encoded_video_id}"
+        # Use FULL URL with host and port for cross-device compatibility
+        video_url = f"{base_url}/api/video/stream/{encoded_video_id}"
 
         start_time = r.get("start_time", 0.0)
         end_time = r.get("end_time", 0.0)

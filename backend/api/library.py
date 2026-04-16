@@ -1,6 +1,6 @@
 import os
 import urllib.parse
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import List
 
@@ -20,14 +20,24 @@ class LibraryItem(BaseModel):
     videoUrl: str
 
 
+def get_base_url(request: Request) -> str:
+    """Get the base URL for the API from the request."""
+    host = request.headers.get("host", "localhost:8002")
+    scheme = request.headers.get("x-forwarded-proto", "http")
+    return f"{scheme}://{host}"
+
+
 @router.get("/library", response_model=List[LibraryItem])
-async def get_library():
+async def get_library(request: Request):
     backend, model = detect_index()
     if backend is None:
         backend = os.getenv("EMBEDDING_BACKEND", "gemini")
 
     store = SentryStore(backend=backend, model=model)
     s = store.get_stats()
+
+    # Get base URL for constructing full video URLs
+    base_url = get_base_url(request)
 
     # Base storage path for relativizing source_file
     base_assets_path = os.path.abspath("backend/assets")
@@ -46,8 +56,8 @@ async def get_library():
             video_id = name
 
         encoded_video_id = urllib.parse.quote(video_id, safe="")
-        # Use relative URL for cross-device compatibility
-        video_url = f"/api/video/stream/{encoded_video_id}"
+        # Use FULL URL with host and port for cross-device compatibility
+        video_url = f"{base_url}/api/video/stream/{encoded_video_id}"
 
         # Extract video duration
         try:
