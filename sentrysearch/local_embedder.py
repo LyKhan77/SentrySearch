@@ -189,11 +189,32 @@ class LocalEmbedder(BaseEmbedder):
             from transformers.utils import TransformersKwargs
             from transformers.processing_utils import Unpack
         except ImportError as e:
-            raise LocalModelError(
-                f"Missing dependencies for local backend: {e}\n\n"
-                'Install with: uv tool install ".[local]"\n'
-                'For 4-bit quantization: uv tool install ".[local-quantized]"'
-            ) from e
+            error_msg = str(e).lower()
+            if "torchvision" in error_msg:
+                raise LocalModelError(
+                    f"Missing torchvision library: {e}\n\n"
+                    "The Qwen3-VL model requires torchvision for video processing.\n"
+                    "Install with: pip install torchvision\n\n"
+                    'Or install all local dependencies: uv tool install ".[local]"'
+                ) from e
+            elif "transformers" in error_msg:
+                raise LocalModelError(
+                    f"Missing transformers library: {e}\n\n"
+                    "Install with: pip install transformers\n\n"
+                    'Or install all local dependencies: uv tool install ".[local]"'
+                ) from e
+            elif "torch" in error_msg:
+                raise LocalModelError(
+                    f"Missing torch library: {e}\n\n"
+                    "Install with: pip install torch\n\n"
+                    'Or install all local dependencies: uv tool install ".[local]"'
+                ) from e
+            else:
+                raise LocalModelError(
+                    f"Missing dependencies for local backend: {e}\n\n"
+                    'Install with: uv tool install ".[local]"\n'
+                    'For 4-bit quantization: uv tool install ".[local-quantized]"'
+                ) from e
 
         # Check if model is already cached locally
         try:
