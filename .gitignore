@@ -21,3 +21,4 @@ db/
 backend/assets/vids/
 backend/assets/uploads/*
 !backend/assets/uploads/.gitkeep
+.opencode
