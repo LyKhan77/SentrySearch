@@ -28,9 +28,8 @@ export function DualVideoPlayer({ originalUrl, clipUrl, startTime, endTime, vide
     }
   }, [clipUrl, startTime]);
 
-  const title = videoTitle || clipUrl.split('/').pop() || 'video';
   const trimmedClipUrl = (startTime !== undefined && endTime !== undefined)
-    ? endpoints.trimClip(title, startTime, endTime)
+    ? endpoints.trimClip(clipUrl, startTime, endTime)
     : clipUrl;
 
   return (
