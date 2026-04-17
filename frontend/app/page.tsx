@@ -86,6 +86,19 @@ export default function DashboardPage() {
     }
   };
 
+  const handleFileUpload = (uploadJobId: string) => {
+    setJobId(uploadJobId);
+    setIndexingState({
+      progress: 0,
+      status: 'Uploading and preparing...',
+      eta: 'calculating...',
+      done: false,
+      cancelled: false,
+      fallback_occurred: false,
+      fallback_reason: null,
+    });
+  };
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-10">
       <div>
@@ -119,7 +132,7 @@ export default function DashboardPage() {
               onCancel={handleCancelIndexing}
             />
           ) : (
-            <VideoUploader onUpload={handleStartIndexing} />
+            <VideoUploader onUpload={handleStartIndexing} onFileUpload={handleFileUpload} />
           )}
         </div>
       </div>

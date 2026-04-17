@@ -2,7 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from backend.api import indexing, library, settings, stats, history, search, video
+from backend.api import (
+    indexing,
+    library,
+    settings,
+    stats,
+    history,
+    search,
+    video,
+    upload,
+)
 
 
 app = FastAPI()
@@ -23,6 +32,7 @@ app.include_router(library.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(video.router, prefix="/api/video")
+app.include_router(upload.router, prefix="/api")
 
 
 @app.get("/api/health")

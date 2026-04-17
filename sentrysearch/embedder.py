@@ -5,6 +5,8 @@ embed_query) that delegate to whichever backend is currently active.
 Re-exports error classes from gemini_embedder for existing import sites.
 """
 
+import os
+
 from .base_embedder import BaseEmbedder
 from .gemini_embedder import GeminiAPIKeyError, GeminiQuotaError  # noqa: F401
 
@@ -67,8 +69,11 @@ def reset_embedder():
     """Reset the cached embedder (for switching backends)."""
     global _current_embedder, _current_backend, _current_model
     _current_embedder = None
-    _current_backend = "gemini"
+    _current_backend = os.getenv("EMBEDDING_BACKEND", "gemini")
     _current_model = None
+    from .fallback_embedder import set_fallback_callback
+
+    set_fallback_callback(None)
 
 
 def get_current_backend() -> str:
@@ -80,7 +85,7 @@ def get_current_backend() -> str:
     global _current_embedder, _current_backend
 
     if _current_embedder is None:
-        return _current_backend
+        return os.getenv("EMBEDDING_BACKEND", _current_backend)
 
     # Check if it's a FallbackEmbedder and get actual backend
     from .fallback_embedder import FallbackEmbedder

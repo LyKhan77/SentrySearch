@@ -78,4 +78,70 @@ export const endpoints = {
     const baseUrl = getApiBaseFromUrl(videoUrl);
     return `${baseUrl}/video/trim/${encodeURIComponent(videoId)}?start=${start}&end=${end}&padding=${padding}`;
   },
+
+  uploadAndIndex: async (files: File[], onProgress?: (percent: number) => void) => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const url = `${API_BASE_URL}/index/upload-and-index`;
+
+    return new Promise<{ job_id: string; staging_path: string; saved_files: string[]; rejected: { filename: string; reason: string }[]; file_count: number }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error('Invalid JSON response'));
+          }
+        } else {
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            const msg = typeof errorData.detail === 'string'
+              ? errorData.detail
+              : errorData.detail?.message || errorData.error || 'Upload failed';
+            reject(new Error(msg));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(formData);
+    });
+  },
+
+  uploadOnly: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const response = await fetch(`${API_BASE_URL}/index/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const detail = error.detail;
+      const msg = typeof detail === 'string'
+        ? detail
+        : detail?.message || error.error || 'Upload failed';
+      throw new Error(msg);
+    }
+
+    return response.json();
+  },
 };
