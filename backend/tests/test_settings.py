@@ -70,15 +70,29 @@ def test_get_settings_starts_with_defaults():
 
 
 def test_get_settings_includes_active_backend(monkeypatch):
-    from sentrysearch.store import detect_index
+    """Test that active_backend is returned from embedder (not from detect_index)."""
 
-    def mock_detect_index(db_path=None):
-        return "gemini", None
+    def mock_get_current_backend():
+        return "local"  # Simulate local model is active
 
-    monkeypatch.setattr(settings_api, "detect_index", mock_detect_index)
+    def mock_get_fallback_status():
+        return {
+            "is_using_fallback": False,
+            "fallback_reason": None,
+            "configured_backend": "local",
+            "active_backend": "local",
+        }
+
+    monkeypatch.setattr(
+        "sentrysearch.embedder.get_current_backend", mock_get_current_backend
+    )
+    monkeypatch.setattr(
+        "sentrysearch.embedder.get_fallback_status", mock_get_fallback_status
+    )
 
     response = client.get("/api/settings")
     assert response.status_code == 200
     data = response.json()
     assert "active_backend" in data
-    assert data["active_backend"] == "gemini"
+    # active_backend should come from embedder ("local"), not from ENV ("gemini")
+    assert data["active_backend"] == "local"

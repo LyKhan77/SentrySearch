@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import List
 
-from sentrysearch.store import SentryStore, detect_index
+from sentrysearch.store import DEFAULT_DB_PATH
 from sentrysearch.chunker import _get_video_duration
 
 router = APIRouter()
@@ -27,14 +27,25 @@ def get_base_url(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+import chromadb
+
+
 @router.get("/library", response_model=List[LibraryItem])
 async def get_library(request: Request):
-    backend, model = detect_index()
-    if backend is None:
-        backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+    # Search across ALL collections to find all indexed videos
 
-    store = SentryStore(backend=backend, model=model)
-    s = store.get_stats()
+    client = chromadb.PersistentClient(path=str(DEFAULT_DB_PATH))
+    collections = client.list_collections()
+
+    # Aggregate source files from all collections
+    all_source_files = set()
+    for collection in collections:
+        if collection.count() > 0:
+            all_meta = collection.get(include=["metadatas"])
+            for meta in all_meta["metadatas"]:
+                all_source_files.add(meta["source_file"])
+
+    source_files = sorted(all_source_files)
 
     # Get base URL for constructing full video URLs
     base_url = get_base_url(request)
@@ -43,7 +54,7 @@ async def get_library(request: Request):
     base_assets_path = os.path.abspath("backend/assets")
 
     items = []
-    for i, file_path in enumerate(s["source_files"], 1):
+    for i, file_path in enumerate(source_files, 1):
         name = os.path.basename(file_path)
         size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
         size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
@@ -91,11 +102,17 @@ async def get_library(request: Request):
 @router.delete("/library/{item_id}")
 async def delete_library_item(item_id: str, path: str):
     """Remove a file from the index. Optionally could delete file from disk too."""
-    backend, model = detect_index()
-    if backend is None:
-        return {"status": "error", "message": "No index found"}
+    # Remove from ALL collections where the file exists
 
-    store = SentryStore(backend=backend, model=model)
-    removed_count = store.remove_file(path)
+    client = chromadb.PersistentClient(path=str(DEFAULT_DB_PATH))
+    collections = client.list_collections()
 
-    return {"status": "success", "removed_chunks": removed_count}
+    total_removed = 0
+    for collection in collections:
+        # Check if file exists in this collection
+        results = collection.get(where={"source_file": path})
+        if results["ids"]:
+            collection.delete(ids=results["ids"])
+            total_removed += len(results["ids"])
+
+    return {"status": "success", "removed_chunks": total_removed}

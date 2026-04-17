@@ -1,17 +1,23 @@
 'use client';
 
+import { useState } from "react";
 import { LibraryTable, type LibraryItem } from "@/components/library/LibraryTable";
 import { Button } from "@/components/ui/button";
 import { Plus, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints, fetchApi } from "@/lib/api";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function LibraryPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const [playingItem, setPlayingItem] = useState<LibraryItem | null>(null);
   
   const { data: libraryItems, isLoading, error } = useQuery({
     queryKey: ['library'],
@@ -37,11 +43,7 @@ export default function LibraryPage() {
   };
 
   const handlePlay = (item: LibraryItem) => {
-    // Navigate to search page with this video selected? 
-    // Or just open it. For now, let's redirect to search with a query that might find it
-    // or we could add a direct 'player' route. 
-    // Let's assume we want to "Search inside this video"
-    router.push(`/search?video=${encodeURIComponent(item.path)}`);
+    setPlayingItem(item);
   };
 
   return (
@@ -74,6 +76,26 @@ export default function LibraryPage() {
           onPlay={handlePlay}
         />
       )}
+
+      <Dialog open={!!playingItem} onOpenChange={(open) => !open && setPlayingItem(null)}>
+        <DialogContent className="sm:max-w-4xl p-0 overflow-hidden bg-black/95 border-border/40">
+          <DialogHeader className="p-4 absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+            <DialogTitle className="text-white drop-shadow-md">
+              {playingItem?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {playingItem && (
+            <div className="w-full aspect-video bg-black flex items-center justify-center relative pt-14 pb-2">
+              <video 
+                src={playingItem.videoUrl} 
+                controls 
+                autoPlay 
+                className="max-w-full max-h-full"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

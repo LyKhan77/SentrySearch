@@ -1,8 +1,8 @@
 import os
+import sys
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv, set_key
-from sentrysearch.store import detect_index
 
 
 router = APIRouter()
@@ -38,24 +38,33 @@ class LocalModelTestResponse(BaseModel):
 
 @router.get("/settings")
 def get_settings() -> Settings:
-    backend, model = detect_index()
+    # Get configured backend from ENV (what user selected in UI)
+    configured_backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+    configured_model = os.getenv("EMBEDDING_MODEL", "qwen2b")
 
-    # Get fallback status from embedder module
+    # Get active backend from embedder (what's actually loaded/used)
     try:
-        from sentrysearch.embedder import get_fallback_status
+        from sentrysearch.embedder import get_current_backend, get_fallback_status
 
+        active_backend = get_current_backend()
         fallback_status = get_fallback_status()
         is_fallback = fallback_status.get("is_using_fallback", False)
         fallback_reason = fallback_status.get("fallback_reason")
-        active_backend = fallback_status.get("active_backend", backend)
     except Exception:
+        # If embedder not loaded yet, use configured values
+        active_backend = configured_backend
         is_fallback = False
         fallback_reason = None
-        active_backend = backend
+
+    # Get active model (from fallback status or configured)
+    active_model = configured_model
+    if is_fallback and fallback_reason:
+        # If fallback occurred, we're using Gemini (which has no model variant)
+        pass  # active_model stays as configured
 
     return Settings(
         active_backend=active_backend,
-        active_model=model,
+        active_model=active_model,
         is_using_fallback=is_fallback,
         fallback_reason=fallback_reason,
     )
@@ -63,6 +72,10 @@ def get_settings() -> Settings:
 
 @router.put("/settings")
 def update_settings(settings: Settings) -> Settings:
+    # Get current backend before update
+    current_backend = os.getenv("EMBEDDING_BACKEND", "gemini")
+    new_backend = settings.model
+
     set_key(ENV_PATH, "EMBEDDING_BACKEND", settings.model)
     set_key(ENV_PATH, "CHUNK_DURATION", str(settings.chunk_duration))
     set_key(ENV_PATH, "OVERLAP", str(settings.overlap))
@@ -73,6 +86,20 @@ def update_settings(settings: Settings) -> Settings:
 
     # Reload env
     load_dotenv(ENV_PATH, override=True)
+
+    # Reset embedder if backend changed
+    if current_backend != new_backend:
+        try:
+            from sentrysearch.embedder import reset_embedder
+
+            reset_embedder()
+            print(
+                f"Embedder reset: backend changed from {current_backend} to {new_backend}",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(f"Warning: Failed to reset embedder: {e}", file=sys.stderr)
+
     return settings
 
 
