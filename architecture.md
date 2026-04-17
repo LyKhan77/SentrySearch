@@ -195,3 +195,67 @@ This document describes the current repository architecture (FastAPI backend + N
 - Frontend default API base is `http://0.0.0.0:8002/api` (`NEXT_PUBLIC_API_URL` can override for your Mac's IP).
 - Gemini embedder uses `gemini-embedding-2-preview`.
 - Local embedding requires extra dependencies (`torch`, `transformers`, etc.).
+
+## 8) Analogy: Smart Library for Videos
+
+Think of SentrySearch as a **smart library card catalog** for video footage:
+
+### Chunking = Cutting Trailers
+A 10-minute video is sliced into 30-second clips with 5-second overlaps—like creating overlapping movie trailers so no scene is lost at the cut boundaries.
+
+```text
+Video: [========================================] 10 min
+
+Chunk 1: [==========]  0:00-0:30
+Chunk 2:      [==========]  0:25-0:55   (overlap 5s)
+Chunk 3:           [==========]  0:50-1:20
+```
+
+### Preprocessing = Making Thumbnails
+Each clip is compressed (480p, 5fps) and still-frame segments are discarded—like shrinking photos to thumbnail size and throwing away blank pages.
+
+### Embedding = AI Fingerprints
+Each clip is converted into a 768-number "fingerprint" by AI—like a librarian writing a semantic summary in a language only computers understand.
+
+```text
+Video clip --[Gemini AI]--> [0.23, -0.45, 0.89, ...] 768-dimension vector
+                               (visual fingerprint)
+```
+
+### Storage = Filing Cabinet
+Fingerprints are stored in ChromaDB with file paths and timestamps—like index cards pointing to exactly where each scene lives.
+
+```text
+ChromaDB Collection
+┌────────────────────────────────────────────┐
+│  File           Time        Fingerprint          │
+│  ─────────────  ──────────  ────────────────────────  │
+│  dashcam.mp4    0:00-0:30   [0.23, -0.45, ...]   │
+│  dashcam.mp4    0:25-0:55   [0.11, 0.88, ...]    │
+│  dashcam.mp4    0:50-1:20   [-0.33, 0.67, ...]   │
+└────────────────────────────────────────────┘
+```
+
+### Search = Semantic Lookup
+When you search "red motorcycle," your query becomes a fingerprint and the system finds the closest matches—like asking the librarian for "books about adventure" and getting relevant results even if "adventure" isn't in the title.
+
+```text
+"red motorcycle" --[Gemini]--> [-0.12, 0.34, ...] --[ChromaDB]--> Top matches
+                                      │
+                                      v
+                           dashcam.mp4 @ 05:23 (score: 0.89)
+                           dashcam.mp4 @ 02:15 (score: 0.76)
+```
+
+### Full Pipeline Visualization
+
+```text
+Indexing Flow:
+┌────┐    ┌─────┐    ┌───────┐    ┌──────┐    ┌──────┐
+│ 📹 │ -> │ ✂️ │ -> │ 📡 │ -> │ 🧚 │ -> │ 💾 │
+└────┘    └─────┘    └───────┘    └──────┘    └──────┘
+ Video   Chunk   Preprocess  Embed    Store
+
+Search Flow:
+🔍 Query --[Embed]--> 🔑 Fingerprint --[Search]--> 📋 Results (file + time)
+```

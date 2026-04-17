@@ -22,16 +22,11 @@ export function DualVideoPlayer({ originalUrl, clipUrl, startTime, endTime, vide
       clipVideoRef.current.currentTime = 0;
       clipVideoRef.current.play().catch(() => {});
     }
-  }, [clipUrl, startTime]);
-
-  const handleTimeUpdate = () => {
-    if (clipVideoRef.current && endTime !== undefined && startTime !== undefined) {
-      const paddedEnd = endTime - startTime + 2.0;
-      if (clipVideoRef.current.currentTime >= paddedEnd) {
-        clipVideoRef.current.pause();
-      }
+    if (originalVideoRef.current && startTime !== undefined) {
+      originalVideoRef.current.currentTime = startTime;
+      originalVideoRef.current.play().catch(() => {});
     }
-  };
+  }, [clipUrl, startTime]);
 
   const title = videoTitle || clipUrl.split('/').pop() || 'video';
   const trimmedClipUrl = (startTime !== undefined && endTime !== undefined)
@@ -70,8 +65,7 @@ export function DualVideoPlayer({ originalUrl, clipUrl, startTime, endTime, vide
             controls 
             src={trimmedClipUrl}
             key={`clip-${trimmedClipUrl}`}
-            onTimeUpdate={handleTimeUpdate}
-          >
+                      >
             Your browser does not support the video tag.
           </video>
         </Card>
