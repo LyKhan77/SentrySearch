@@ -12,6 +12,7 @@ node_modules/
 .env.local
 db_test/
 *.png
+*.txt
 
 # others
 .firecrawl
